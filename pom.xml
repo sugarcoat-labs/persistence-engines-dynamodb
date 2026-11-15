@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    ============================================================================
+    TECHNOLOGY REALIZATION SPECIFICATION & REUSE CONTRACT
+    ============================================================================
+
+    1. IMPORTED & REUSED FROM `persistence-engines-core` (DO NOT REWRITE):
+
+       - Entry-Point & Pipeline Contracts:
+           * com.sugarcoatlabs.persistence.PersistenceEngines
+           * com.sugarcoatlabs.persistence.PersistencePipeline
+
+       - Engine Interfaces:
+           * com.sugarcoatlabs.persistence.event.EventStreamEngine
+           * com.sugarcoatlabs.persistence.state.StateStoreEngine
+
+       - Exceptions:
+           * com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException
+           * com.sugarcoatlabs.persistence.exception.DuplicateEventException
+
+       - TCK Abstract Test Suites (imported via `test-jar`):
+           * com.sugarcoatlabs.persistence.tck.EventStreamEngineContractTest
+           * com.sugarcoatlabs.persistence.tck.StateStoreEngineContractTest
+
+    2. TO BE IMPLEMENTED IN THIS MODULE (`persistence-engines-dynamodb`):
+
+       - Production (`src/main/java`):
+           * module-info.java
+               JPMS module descriptor requiring `com.sugarcoatlabs.persistence`
+               and AWS SDK DynamoDB v2, exporting only the public API package
+               while keeping `.impl` unexported.
+           * com/sugarcoatlabs/persistence/dynamodb/DynamoDb.java
+               Public fluent `PersistencePipeline` entry point for
+               `PersistenceEngines.using(DynamoDb.client(client))...`.
+           * com/sugarcoatlabs/persistence/dynamodb/DynamoDbCodec.java
+               Zero-framework functional serialization contract (`T <-> String`)
+               with built-in primitive codecs (`strings()`, `uuids()`, `longs()`).
+           * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbEventStream.java
+               Encapsulated `EventStreamEngine` backed by `TransactWriteItems`
+               and `ConsistentRead=true` queries.
+           * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbStateStore.java
+               Encapsulated `StateStoreEngine` backed by `PutItem`, `GetItem`,
+               `Scan`, and `DeleteItem`.
+
+       - Integration Tests (`src/test/java`):
+           * DynamoDbEventStreamIT.java
+               Extends `EventStreamEngineContractTest` against `amazon/dynamodb-local`
+               via Testcontainers.
+           * DynamoDbStateStoreIT.java
+               Extends `StateStoreEngineContractTest` against `amazon/dynamodb-local`
+               via Testcontainers.
+    ============================================================================
+    -->
+
+    <groupId>com.sugarcoatlabs</groupId>
+    <artifactId>persistence-engines-dynamodb</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>persistence-engines-dynamodb</name>
+    <description>Amazon DynamoDB realization of persistence-engines-core verified against the portable TCK.</description>
+
+    <properties>
+        <maven.compiler.release>24</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <core.version>1.0.0-SNAPSHOT</core.version>
+        <aws.sdk.version>2.31.12</aws.sdk.version>
+        <junit.version>5.11.4</junit.version>
+        <assertj.version>3.27.3</assertj.version>
+        <testcontainers.version>1.20.6</testcontainers.version>
+    </properties>
+
+    <dependencies>
+        <!-- Core Contracts & Unified Entry Point -->
+        <dependency>
+            <groupId>com.sugarcoatlabs</groupId>
+            <artifactId>persistence-engines-core</artifactId>
+            <version>${core.version}</version>
+        </dependency>
+
+        <!-- AWS SDK v2 for DynamoDB -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>dynamodb</artifactId>
+            <version>${aws.sdk.version}</version>
+        </dependency>
+
+        <!-- Portable TCK Abstract Contract Suites -->
+        <dependency>
+            <groupId>com.sugarcoatlabs</groupId>
+            <artifactId>persistence-engines-core</artifactId>
+            <version>${core.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- JUnit 5 & AssertJ -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers for amazon/dynamodb-local -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <argLine>--add-reads com.sugarcoatlabs.persistence.dynamodb=ALL-UNNAMED</argLine>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <argLine>--add-reads com.sugarcoatlabs.persistence.dynamodb=ALL-UNNAMED</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
