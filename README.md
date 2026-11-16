@@ -1,7 +1,8 @@
 # persistence-engines-dynamodb
 
 Amazon DynamoDB realization of the **`persistence-engines-core`** contracts
-(`EventStreamEngine` and `StateStoreEngine`). Built for **Java 24+** with full
+(`EventStreamEngine`, JSR-107-aligned `StateStoreEngine`, and ergonomic views
+`RepositoryStateStore` and `EntityStateStore`). Built for **Java 24+** with full
 JPMS encapsulation and verified against the portable Technology Compatibility
 Kit (TCK) from `persistence-engines-core`.
 
@@ -17,17 +18,18 @@ application adapters, or behavioral guarantees.
 
 - [🔗 Relationship to `persistence-engines-core`](#-relationship-to-persistence-engines-core)
 - [🎯 Core Architectural Decisions & Rationale](#-core-architectural-decisions--rationale)
-    - [1. Fluent Pipeline Integration (`PersistenceEngines.using(...)`)](#1-fluent-pipeline-integration-persistenceenginesusing)
-    - [2. Zero-Framework Serialization (`DynamoDbCodec<T>`)](#2-zero-framework-serialization-dynamodbcodect)
-    - [3. Strict JPMS Encapsulation](#3-strict-jpms-encapsulation)
+  - [1. Fluent Pipeline Integration (`PersistenceEngines.using(...)`)](#1-fluent-pipeline-integration-persistenceenginesusing)
+  - [2. Zero-Framework Serialization (`DynamoDbCodec<T>`)](#2-zero-framework-serialization-dynamodbcodect)
+  - [3. Strict JPMS Encapsulation](#3-strict-jpms-encapsulation)
 - [🗄 DynamoDB Table Schemas & Consistency Model](#-dynamodb-table-schemas--consistency-model)
-    - [1. `EventStreamEngine` Single-Table Design](#1-eventstreamengine-single-table-design)
-    - [2. Atomic OCC & Global Idempotency via `TransactWriteItems`](#2-atomic-occ--global-idempotency-via-transactwriteitems)
-    - [3. `StateStoreEngine` Key-Value Table Design](#3-statestoreengine-key-value-table-design)
+  - [1. `EventStreamEngine` Single-Table Design](#1-eventstreamengine-single-table-design)
+  - [2. Atomic OCC & Global Idempotency via `TransactWriteItems`](#2-atomic-occ--global-idempotency-via-transactwriteitems)
+  - [3. `StateStoreEngine` Key-Value Table Design](#3-statestoreengine-key-value-table-design)
 - [🚀 User's Guide](#-users-guide)
-    - [1. Creating Required DynamoDB Tables](#1-creating-required-dynamodb-tables)
-    - [2. Partitioned Event Stream Engine (`EventStreamEngine`)](#2-partitioned-event-stream-engine-eventstreamengine)
-    - [3. Mutable State Store Engine (`StateStoreEngine`)](#3-mutable-state-store-engine-statestoreengine)
+  - [1. Creating Required DynamoDB Tables](#1-creating-required-dynamodb-tables)
+  - [2. Partitioned Event Stream Engine (`EventStreamEngine`)](#2-partitioned-event-stream-engine-eventstreamengine)
+  - [3. Mutable State Store Engine (`StateStoreEngine`)](#3-mutable-state-store-engine-statestoreengine)
+  - [4. Ergonomic State-Store Views (`RepositoryStateStore` & `EntityStateStore`)](#4-ergonomic-state-store-views-repositorystatestore--entitystatestore)
 - [📦 Package Architecture & JPMS Visibility](#-package-architecture--jpms-visibility)
 - [🧪 Testing Strategy & TCK Compliance (`dynamodb-local`)](#-testing-strategy--tck-compliance-dynamodb-local)
 - [🔌 Build & Dependency Configuration](#-build--dependency-configuration)
@@ -44,18 +46,20 @@ concurrency exceptions, or behavioral test suites. Instead, it builds directly
 on `persistence-engines-core`:
 
 - **Reused Contracts (`compile` scope):** Directly implements
-  `EventStreamEngine<S, E_ID, E>` and `StateStoreEngine<ID, T>`, plugs into
+  `EventStreamEngine<S, E_ID, E>` and `StateStoreEngine<ID, T>` (which adapts
+  zero-overhead to `RepositoryStateStore` and `EntityStateStore`), plugs into
   `PersistenceEngines.using(PersistencePipeline)`, and throws the exact
-  `OptimisticConcurrencyException` and `DuplicateEventException` types from
-  `core`.
+  `OptimisticConcurrencyException`, `DuplicateEventException`,
+  `DuplicateEntityException`, and `EntityNotFoundException` types from `core`.
 - **Reused Contract Tests (`test-jar` scope):** Imports the filtered TCK
   (`com.sugarcoatlabs.persistence.tck.*`) from `persistence-engines-core` and
   executes the inherited contract suites against real DynamoDB semantics to
   prove 100% behavioral parity with the pure-JDK core.
 - **Zero Application Adapter Changes:** Because both realizations satisfy the
   exact same interfaces and exception contracts, application Object Adapters
-  inject `EventStreamEngine` or `StateStoreEngine` and remain completely
-  agnostic to whether the backing store is JDK heap memory or AWS DynamoDB.
+  inject `EventStreamEngine`, `StateStoreEngine`, `RepositoryStateStore`, or
+  `EntityStateStore` and remain completely agnostic to whether the backing
+  store is JDK heap memory or AWS DynamoDB.
 
 ---
 
@@ -110,7 +114,8 @@ public interface DynamoDbCodec<T> {
   into the parent `com.sugarcoatlabs.persistence` package—JPMS strictly forbids
   two modules from sharing the same package name (Split Package Error).
 
----
+
+  ---
 
 ## 🗄 DynamoDB Table Schemas & Consistency Model
 
@@ -164,10 +169,12 @@ contract of `persistence-engines-core`.
 
 | Operation | DynamoDB API Call | Consistency & Atomicity |
 | :--- | :--- | :--- |
-| `save(id, entity)` | `PutItem` (`PK = STATE#<id>`, `SK = STATE`) | Atomic idempotent upsert (last-write-wins). |
+| `putIfAbsent(id, entity)` | `PutItem` (`PK = STATE#<id>`, `SK = STATE`) with `ConditionExpression = "attribute_not_exists(PK)"` | Atomic insert-only; throws `DuplicateEntityException` on `ConditionalCheckFailedException`. |
+| `replace(id, entity)` | `PutItem` (`PK = STATE#<id>`, `SK = STATE`) with `ConditionExpression = "attribute_exists(PK)"` | Atomic update-only; throws `EntityNotFoundException` on `ConditionalCheckFailedException`. |
+| `put(id, entity)` | Unconditional `PutItem` (`PK = STATE#<id>`, `SK = STATE`) | Atomic idempotent upsert (last-write-wins). |
 | `findById(id)` | `GetItem` with `ConsistentRead = true` | Strong read-your-writes consistency. |
 | `exists(id)` | `GetItem` with `ConsistentRead = true`, `ProjectionExpression = "PK"` | Lightweight existence check without transferring payload bytes. |
-| `findAll()` | Paginated `Scan` filtered on `SK = STATE` | Returns an unmodifiable `List.copyOf(...)` snapshot. |
+| `findAll()` | Paginated `Scan` filtered on `SK = STATE` with `ConsistentRead = true` | Returns an unmodifiable `List.copyOf(...)` snapshot. |
 | `deleteById(id)` | `DeleteItem` with `ReturnValues = ALL_OLD` | Atomically deletes and returns `response.hasAttributes()`. |
 
 ---
@@ -191,6 +198,7 @@ dynamoDbClient.createTable(CreateTableRequest.builder()
         .billingMode(BillingMode.PAY_PER_REQUEST)
         .build());
 ```
+
 ### 2. Partitioned Event Stream Engine (`EventStreamEngine`)
 
 ```java
@@ -228,14 +236,46 @@ import java.util.Optional;
 
 record TapConfig(String id, double flowRate) {}
 
-// Instantiate and use StateStoreEngine for idempotent configuration upserts and queries
+// Instantiate and use StateStoreEngine for atomic conditional and idempotent writes
 StateStoreEngine<String, TapConfig> registry =
         PersistenceEngines.using(DynamoDb.client(client))
                 .table("tap-configs")
                 .stateStore(DynamoDbCodec.strings(), configCodec);
 
-registry.save("tap-1", new TapConfig("tap-1", 0.064));
+registry.putIfAbsent("tap-1", new TapConfig("tap-1", 0.064));
+registry.replace("tap-1", new TapConfig("tap-1", 0.128));
+registry.put("tap-2", new TapConfig("tap-2", 0.256));
 Optional<TapConfig> config = registry.findById("tap-1");
+```
+
+### 4. Ergonomic State-Store Views (`RepositoryStateStore` & `EntityStateStore`)
+
+```java
+import com.sugarcoatlabs.persistence.PersistenceEngines;
+import com.sugarcoatlabs.persistence.dynamodb.DynamoDb;
+import com.sugarcoatlabs.persistence.dynamodb.DynamoDbCodec;
+import com.sugarcoatlabs.persistence.state.EntityStateStore;
+import com.sugarcoatlabs.persistence.state.RepositoryStateStore;
+
+// Spring Data Repository-style view
+RepositoryStateStore<String, TapConfig> repoStore =
+        PersistenceEngines.using(DynamoDb.client(client))
+                .table("tap-configs")
+                .repositoryStateStore(DynamoDbCodec.strings(), configCodec);
+
+repoStore.insert("tap-1", new TapConfig("tap-1", 0.064));
+repoStore.update("tap-1", new TapConfig("tap-1", 0.128));
+repoStore.save("tap-2", new TapConfig("tap-2", 0.256));
+
+// Jakarta Persistence (JPA) EntityManager-style view
+EntityStateStore<String, TapConfig> jpaStore =
+        PersistenceEngines.using(DynamoDb.client(client))
+                .table("tap-configs")
+                .entityStateStore(DynamoDbCodec.strings(), configCodec);
+
+jpaStore.persist("tap-3", new TapConfig("tap-3", 0.512));
+jpaStore.replace("tap-3", new TapConfig("tap-3", 0.640));
+jpaStore.merge("tap-4", new TapConfig("tap-4", 0.768));
 ```
 
 ---
@@ -257,12 +297,15 @@ against a real DynamoDB engine:
   verifying `TransactWriteItems`, `ConsistentRead=true`, `ConditionExpression`,
   and `CancellationReasons` against real DynamoDB wire semantics.
 - **Inherited TCK Suites:**
-    - `DynamoDbEventStreamIT extends EventStreamEngineContractTest`
-    - `DynamoDbStateStoreIT extends StateStoreEngineContractTest`
+  - `DynamoDbEventStreamIT extends EventStreamEngineContractTest`
+  - `DynamoDbStateStoreIT extends StateStoreEngineContractTest`
+  - `DynamoDbRepositoryStateStoreIT extends RepositoryStateStoreContractTest`
+  - `DynamoDbEntityStateStoreIT extends EntityStateStoreContractTest`
 - **Table Reset Isolation:** Integration tests implement the portable TCK
   lifecycle hooks (`resetEngine()` in `DynamoDbEventStreamIT` and
-  `resetStore()` in `DynamoDbStateStoreIT`) by recreating the backing DynamoDB
-  table before each test, guaranteeing clean per-test isolation without coupling
+  `resetStore()` in `DynamoDbStateStoreIT`, `DynamoDbRepositoryStateStoreIT`,
+  and `DynamoDbEntityStateStoreIT`) by recreating the backing DynamoDB table
+  before each test, guaranteeing clean per-test isolation without coupling
   external realizations to `persistence-engines-core`'s internal `ResettableEngine`.
 
 ### Local vs. GitHub Actions CI Execution
@@ -276,10 +319,39 @@ infrastructure required:
 | **Local Workstation** | Local Docker daemon (Docker Desktop, OrbStack, or Colima) automatically detected by Testcontainers. | Install `persistence-engines-core` into your local `~/.m2` repository first (`mvn clean install` in `core`), then run `mvn clean verify` in this module. |
 | **GitHub Actions CI** | `ubuntu-latest` runners include Docker pre-installed; Testcontainers pulls and manages `amazon/dynamodb-local` automatically during `mvn verify`. | Because each CI runner starts with an empty `~/.m2` cache, `.github/workflows/ci.yml` checks out `sugarcoat-labs/persistence-engines-core` and runs `mvn -B install` prior to verifying this module. |
 
-
 ---
 
 ## 🔌 Build & Dependency Configuration
+
+### Local Verification
+```bash
+mvn clean verify javadoc:javadoc
+```
+
+### Client Dependency Declaration
+
+#### Maven (`pom.xml`)
+```xml
+<dependency>
+    <groupId>com.sugarcoatlabs</groupId>
+    <artifactId>persistence-engines-dynamodb</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+#### Gradle (`build.gradle`)
+```groovy
+dependencies {
+    implementation 'com.sugarcoatlabs:persistence-engines-dynamodb:1.0.0-SNAPSHOT'
+}
+```
+
+#### Gradle Kotlin DSL (`build.gradle.kts`)
+```kotlin
+dependencies {
+    implementation("com.sugarcoatlabs:persistence-engines-dynamodb:1.0.0-SNAPSHOT")
+}
+```
 
 ### Local Verification
 ```bash
