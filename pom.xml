@@ -76,21 +76,16 @@
     </properties>
 
     <dependencies>
-        <!-- Core Contracts & Unified Entry Point -->
         <dependency>
             <groupId>com.sugarcoatlabs</groupId>
             <artifactId>persistence-engines-core</artifactId>
             <version>${core.version}</version>
         </dependency>
-
-        <!-- AWS SDK v2 for DynamoDB -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>dynamodb</artifactId>
             <version>${aws.sdk.version}</version>
         </dependency>
-
-        <!-- Portable TCK Abstract Contract Suites -->
         <dependency>
             <groupId>com.sugarcoatlabs</groupId>
             <artifactId>persistence-engines-core</artifactId>
@@ -98,8 +93,6 @@
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
-
-        <!-- JUnit 5 & AssertJ -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -112,8 +105,6 @@
             <version>${assertj.version}</version>
             <scope>test</scope>
         </dependency>
-
-        <!-- Testcontainers for amazon/dynamodb-local -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -131,6 +122,18 @@
                 <configuration>
                     <release>${maven.compiler.release}</release>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                        <configuration>
+                            <useModulePath>false</useModulePath>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
@@ -138,7 +141,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
                 <configuration>
-                    <argLine>--add-reads com.sugarcoatlabs.persistence.dynamodb=ALL-UNNAMED</argLine>
+                    <useModulePath>false</useModulePath>
                 </configuration>
             </plugin>
 
@@ -147,7 +150,7 @@
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.5.2</version>
                 <configuration>
-                    <argLine>--add-reads com.sugarcoatlabs.persistence.dynamodb=ALL-UNNAMED</argLine>
+                    <useModulePath>false</useModulePath>
                 </configuration>
                 <executions>
                     <execution>

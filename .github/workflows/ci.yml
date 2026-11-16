@@ -10,9 +10,9 @@
 #      - `core/`     -> sugarcoat-labs/persistence-engines-core (contracts & TCK)
 #      - `dynamodb/` -> this repository (Amazon DynamoDB realization)
 # 4. Installs Java 24 (Eclipse Temurin) and caches Maven dependencies across runs.
-# 5. Builds and installs `persistence-engines-core` into the runner's local
-#    Maven cache (`~/.m2`) so both the core JPMS module and the portable TCK
-#    `test-jar` are available to the DynamoDB build.
+# 5. Builds, tests, and installs `persistence-engines-core` into the runner's
+#    local Maven cache (`~/.m2`) so both the core JPMS module and the portable
+#    TCK `test-jar` are compiled, packaged, and available to the DynamoDB build.
 # 6. Compiles `persistence-engines-dynamodb`, starts an ephemeral
 #    `amazon/dynamodb-local` container via Testcontainers, executes all
 #    inherited TCK integration tests (`*IT.java`) against real DynamoDB wire
@@ -58,7 +58,7 @@ jobs:
 
       - name: Install persistence-engines-core (including TCK test-jar)
         working-directory: core
-        run: mvn -B install -DskipTests
+        run: mvn -B install
 
       - name: Build, run DynamoDB TCK integration tests, and generate Javadoc
         working-directory: dynamodb
