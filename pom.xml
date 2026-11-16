@@ -15,17 +15,23 @@
            * com.sugarcoatlabs.persistence.PersistenceEngines
            * com.sugarcoatlabs.persistence.PersistencePipeline
 
-       - Engine Interfaces:
+       - Engine Interfaces & Ergonomic State-Store Views:
            * com.sugarcoatlabs.persistence.event.EventStreamEngine
            * com.sugarcoatlabs.persistence.state.StateStoreEngine
+           * com.sugarcoatlabs.persistence.state.RepositoryStateStore
+           * com.sugarcoatlabs.persistence.state.EntityStateStore
 
        - Exceptions:
            * com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException
            * com.sugarcoatlabs.persistence.exception.DuplicateEventException
+           * com.sugarcoatlabs.persistence.exception.DuplicateEntityException
+           * com.sugarcoatlabs.persistence.exception.EntityNotFoundException
 
        - TCK Abstract Test Suites (imported via `test-jar`):
            * com.sugarcoatlabs.persistence.tck.EventStreamEngineContractTest
            * com.sugarcoatlabs.persistence.tck.StateStoreEngineContractTest
+           * com.sugarcoatlabs.persistence.tck.RepositoryStateStoreContractTest
+           * com.sugarcoatlabs.persistence.tck.EntityStateStoreContractTest
 
     2. TO BE IMPLEMENTED IN THIS MODULE (`persistence-engines-dynamodb`):
 
@@ -44,7 +50,9 @@
                Encapsulated `EventStreamEngine` backed by `TransactWriteItems`
                and `ConsistentRead=true` queries.
            * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbStateStore.java
-               Encapsulated `StateStoreEngine` backed by `PutItem`, `GetItem`,
+               Encapsulated `StateStoreEngine` backed by conditional and
+               unconditional `PutItem` (`attribute_not_exists(PK)` for
+               `putIfAbsent`, `attribute_exists(PK)` for `replace`), `GetItem`,
                `Scan`, and `DeleteItem`.
 
        - Integration Tests (`src/test/java`):
@@ -53,6 +61,12 @@
                via Testcontainers.
            * DynamoDbStateStoreIT.java
                Extends `StateStoreEngineContractTest` against `amazon/dynamodb-local`
+               via Testcontainers.
+           * DynamoDbRepositoryStateStoreIT.java
+               Extends `RepositoryStateStoreContractTest` against `amazon/dynamodb-local`
+               via Testcontainers.
+           * DynamoDbEntityStateStoreIT.java
+               Extends `EntityStateStoreContractTest` against `amazon/dynamodb-local`
                via Testcontainers.
     ============================================================================
     -->
@@ -76,16 +90,21 @@
     </properties>
 
     <dependencies>
+        <!-- Core Contracts & API -->
         <dependency>
             <groupId>com.sugarcoatlabs</groupId>
             <artifactId>persistence-engines-core</artifactId>
             <version>${core.version}</version>
         </dependency>
+
+        <!-- AWS SDK DynamoDB v2 -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>dynamodb</artifactId>
             <version>${aws.sdk.version}</version>
         </dependency>
+
+        <!-- Portable TCK Test Suites -->
         <dependency>
             <groupId>com.sugarcoatlabs</groupId>
             <artifactId>persistence-engines-core</artifactId>
@@ -93,6 +112,8 @@
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
+
+        <!-- Testing & Integration -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

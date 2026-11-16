@@ -27,6 +27,10 @@ import java.net.URI;
  * TCK verification suite executing {@link StateStoreEngineContractTest} (imported from
  * the {@code persistence-engines-core} module's portable TCK {@code test-jar}) against
  * an isolated {@code amazon/dynamodb-local} container.
+ *
+ * <p>Verifies JSR-107 conditional write semantics ({@code putIfAbsent}, {@code replace},
+ * {@code put}), DynamoDB {@code ConditionExpression} exception translation, strongly
+ * consistent reads, and concurrent contention safety.</p>
  */
 @Testcontainers
 class DynamoDbStateStoreIT

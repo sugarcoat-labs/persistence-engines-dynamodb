@@ -1,9 +1,12 @@
 package com.sugarcoatlabs.persistence.dynamodb.impl;
 
 import com.sugarcoatlabs.persistence.dynamodb.DynamoDbCodec;
+import com.sugarcoatlabs.persistence.exception.DuplicateEntityException;
+import com.sugarcoatlabs.persistence.exception.EntityNotFoundException;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse;
 import software.amazon.awssdk.services.dynamodb.model.GetItemRequest;
@@ -20,7 +23,8 @@ import java.util.Optional;
 
 /**
  * Amazon DynamoDB realization of {@link StateStoreEngine} backed by strongly consistent
- * key-value operations ({@code PutItem}, {@code GetItem}, {@code Scan}, and {@code DeleteItem}).
+ * key-value operations (conditional and unconditional {@code PutItem}, {@code GetItem},
+ * {@code Scan}, and {@code DeleteItem}).
  *
  * @param <ID> unique entity identifier type
  * @param <T>  entity snapshot type
@@ -33,6 +37,9 @@ public final class DynamoDbStateStore<ID, T> implements StateStoreEngine<ID, T> 
 
     private static final String STATE_PREFIX = "STATE#";
     private static final String STATE_SK = "STATE";
+
+    private static final String CONDITION_NOT_EXISTS = "attribute_not_exists(PK)";
+    private static final String CONDITION_EXISTS = "attribute_exists(PK)";
 
     private final DynamoDbClient client;
     private final String tableName;
@@ -68,24 +75,28 @@ public final class DynamoDbStateStore<ID, T> implements StateStoreEngine<ID, T> 
     }
 
     @Override
-    public void save(ID id, T entity) {
-        validateKey(id, "id");
-        if (entity == null) {
-            throw new IllegalArgumentException("entity must not be null");
+    public void putIfAbsent(ID id, T entity) {
+        PutItemRequest request = buildPutRequest(id, entity, CONDITION_NOT_EXISTS);
+        try {
+            client.putItem(request);
+        } catch (ConditionalCheckFailedException ex) {
+            throw new DuplicateEntityException(id);
         }
-        String statePk = STATE_PREFIX + encodeKey(idCodec, id, "id");
-        String encodedPayload = entityCodec.encode(entity);
-        if (encodedPayload == null) {
-            throw new IllegalArgumentException("Encoded entity payload must not be null");
-        }
+    }
 
-        client.putItem(PutItemRequest.builder()
-                .tableName(tableName)
-                .item(Map.of(
-                        PK, attrS(statePk),
-                        SK, attrS(STATE_SK),
-                        PAYLOAD, attrS(encodedPayload)))
-                .build());
+    @Override
+    public void replace(ID id, T entity) {
+        PutItemRequest request = buildPutRequest(id, entity, CONDITION_EXISTS);
+        try {
+            client.putItem(request);
+        } catch (ConditionalCheckFailedException ex) {
+            throw new EntityNotFoundException(id);
+        }
+    }
+
+    @Override
+    public void put(ID id, T entity) {
+        client.putItem(buildPutRequest(id, entity, null));
     }
 
     @Override
@@ -171,6 +182,30 @@ public final class DynamoDbStateStore<ID, T> implements StateStoreEngine<ID, T> 
                 .build());
 
         return response.hasAttributes() && !response.attributes().isEmpty();
+    }
+
+    private PutItemRequest buildPutRequest(ID id, T entity, String conditionExpression) {
+        validateKey(id, "id");
+        if (entity == null) {
+            throw new IllegalArgumentException("entity must not be null");
+        }
+        String statePk = STATE_PREFIX + encodeKey(idCodec, id, "id");
+        String encodedPayload = entityCodec.encode(entity);
+        if (encodedPayload == null) {
+            throw new IllegalArgumentException("Encoded entity payload must not be null");
+        }
+
+        PutItemRequest.Builder builder = PutItemRequest.builder()
+                .tableName(tableName)
+                .item(Map.of(
+                        PK, attrS(statePk),
+                        SK, attrS(STATE_SK),
+                        PAYLOAD, attrS(encodedPayload)));
+
+        if (conditionExpression != null) {
+            builder.conditionExpression(conditionExpression);
+        }
+        return builder.build();
     }
 
     private static <K> void validateKey(K key, String name) {

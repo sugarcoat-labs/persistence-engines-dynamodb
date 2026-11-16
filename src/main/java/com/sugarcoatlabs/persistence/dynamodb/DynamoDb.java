@@ -4,6 +4,8 @@ import com.sugarcoatlabs.persistence.PersistencePipeline;
 import com.sugarcoatlabs.persistence.dynamodb.impl.DynamoDbEventStream;
 import com.sugarcoatlabs.persistence.dynamodb.impl.DynamoDbStateStore;
 import com.sugarcoatlabs.persistence.event.EventStreamEngine;
+import com.sugarcoatlabs.persistence.state.EntityStateStore;
+import com.sugarcoatlabs.persistence.state.RepositoryStateStore;
 import com.sugarcoatlabs.persistence.state.StateStoreEngine;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
@@ -18,6 +20,16 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
  *         PersistenceEngines.using(DynamoDb.client(dynamoDbClient))
  *                 .table("tap-events")
  *                 .eventStream(DynamoDbCodec.strings(), DynamoDbCodec.uuids(), DynamoDbCodec.strings());
+ *
+ * StateStoreEngine<String, String> stateStore =
+ *         PersistenceEngines.using(DynamoDb.client(dynamoDbClient))
+ *                 .table("tap-configs")
+ *                 .stateStore(DynamoDbCodec.strings(), DynamoDbCodec.strings());
+ *
+ * RepositoryStateStore<String, String> repoStore =
+ *         PersistenceEngines.using(DynamoDb.client(dynamoDbClient))
+ *                 .table("tap-configs")
+ *                 .repositoryStateStore(DynamoDbCodec.strings(), DynamoDbCodec.strings());
  * }</pre>
  */
 public final class DynamoDb {
@@ -111,6 +123,40 @@ public final class DynamoDb {
                 DynamoDbCodec<ID> idCodec,
                 DynamoDbCodec<T> entityCodec) {
             return new DynamoDbStateStore<>(client, tableName, idCodec, entityCodec);
+        }
+
+        /**
+         * Instantiates a Spring Data repository-style {@link RepositoryStateStore} backed by
+         * the configured DynamoDB table.
+         *
+         * @param idCodec     codec for entity identifiers
+         * @param entityCodec codec for entity snapshots
+         * @param <ID>        unique entity identifier type
+         * @param <T>         entity snapshot type
+         * @return a configured DynamoDB-backed {@link RepositoryStateStore}
+         * @throws IllegalArgumentException if any codec is {@code null}
+         */
+        public <ID, T> RepositoryStateStore<ID, T> repositoryStateStore(
+                DynamoDbCodec<ID> idCodec,
+                DynamoDbCodec<T> entityCodec) {
+            return RepositoryStateStore.adapting(stateStore(idCodec, entityCodec));
+        }
+
+        /**
+         * Instantiates a Jakarta Persistence (JPA)-style {@link EntityStateStore} backed by
+         * the configured DynamoDB table.
+         *
+         * @param idCodec     codec for entity identifiers
+         * @param entityCodec codec for entity snapshots
+         * @param <ID>        unique entity identifier type
+         * @param <T>         entity snapshot type
+         * @return a configured DynamoDB-backed {@link EntityStateStore}
+         * @throws IllegalArgumentException if any codec is {@code null}
+         */
+        public <ID, T> EntityStateStore<ID, T> entityStateStore(
+                DynamoDbCodec<ID> idCodec,
+                DynamoDbCodec<T> entityCodec) {
+            return EntityStateStore.adapting(stateStore(idCodec, entityCodec));
         }
     }
 }

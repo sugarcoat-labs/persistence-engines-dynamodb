@@ -5,6 +5,12 @@
  * entry point and {@link com.sugarcoatlabs.persistence.dynamodb.DynamoDbCodec} serialization
  * contract while keeping concrete DynamoDB engine realizations strictly encapsulated.</p>
  *
+ * <p>Provides production Amazon DynamoDB implementations of
+ * {@link com.sugarcoatlabs.persistence.event.EventStreamEngine} and the JSR-107-aligned
+ * {@link com.sugarcoatlabs.persistence.state.StateStoreEngine} (which can also be adapted
+ * into Spring Data or JPA views via {@link com.sugarcoatlabs.persistence.state.RepositoryStateStore}
+ * and {@link com.sugarcoatlabs.persistence.state.EntityStateStore}).</p>
+ *
  * <p><strong>JPMS Namespace Rule:</strong> Do <em>not</em> move classes from
  * {@code com.sugarcoatlabs.persistence.dynamodb} into {@code com.sugarcoatlabs.persistence}.
  * Because {@code persistence-engines-core} already owns {@code com.sugarcoatlabs.persistence},
