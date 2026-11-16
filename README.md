@@ -259,10 +259,11 @@ against a real DynamoDB engine:
 - **Inherited TCK Suites:**
     - `DynamoDbEventStreamIT extends EventStreamEngineContractTest`
     - `DynamoDbStateStoreIT extends StateStoreEngineContractTest`
-- **Table Reset Isolation:** Because `ResettableEngine` is intentionally
-  unexported in `persistence-engines-core`, integration tests recreate or
-  truncate the backing DynamoDB table in `@BeforeEach` to guarantee clean
-  per-test isolation.
+- **Table Reset Isolation:** Integration tests implement the portable TCK
+  lifecycle hooks (`resetEngine()` in `DynamoDbEventStreamIT` and
+  `resetStore()` in `DynamoDbStateStoreIT`) by recreating the backing DynamoDB
+  table before each test, guaranteeing clean per-test isolation without coupling
+  external realizations to `persistence-engines-core`'s internal `ResettableEngine`.
 
 ### Local vs. GitHub Actions CI Execution
 
@@ -273,7 +274,7 @@ infrastructure required:
 | Environment | Container Runtime | Resolving `persistence-engines-core` (`SNAPSHOT`) |
 | :--- | :--- | :--- |
 | **Local Workstation** | Local Docker daemon (Docker Desktop, OrbStack, or Colima) automatically detected by Testcontainers. | Install `persistence-engines-core` into your local `~/.m2` repository first (`mvn clean install` in `core`), then run `mvn clean verify` in this module. |
-| **GitHub Actions CI** | `ubuntu-latest` runners include Docker pre-installed; Testcontainers pulls and manages `amazon/dynamodb-local` automatically during `mvn verify`. | Because each CI runner starts with an empty `~/.m2` cache, `.github/workflows/ci.yml` checks out `sugarcoat-labs/persistence-engines-core` and runs `mvn -B install -DskipTests` prior to verifying this module. |
+| **GitHub Actions CI** | `ubuntu-latest` runners include Docker pre-installed; Testcontainers pulls and manages `amazon/dynamodb-local` automatically during `mvn verify`. | Because each CI runner starts with an empty `~/.m2` cache, `.github/workflows/ci.yml` checks out `sugarcoat-labs/persistence-engines-core` and runs `mvn -B install` prior to verifying this module. |
 
 
 ---
