@@ -4,76 +4,9 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!--
-    ============================================================================
-    TECHNOLOGY REALIZATION SPECIFICATION & REUSE CONTRACT
-    ============================================================================
-
-    1. IMPORTED & REUSED FROM `persistence-engines-core` (DO NOT REWRITE):
-
-       - Entry-Point & Pipeline Contracts:
-           * com.sugarcoatlabs.persistence.PersistenceEngines
-           * com.sugarcoatlabs.persistence.PersistencePipeline
-
-       - Engine Interfaces & Ergonomic State-Store Views:
-           * com.sugarcoatlabs.persistence.event.EventStreamEngine
-           * com.sugarcoatlabs.persistence.state.StateStoreEngine
-           * com.sugarcoatlabs.persistence.state.RepositoryStateStore
-           * com.sugarcoatlabs.persistence.state.EntityStateStore
-
-       - Exceptions:
-           * com.sugarcoatlabs.persistence.exception.OptimisticConcurrencyException
-           * com.sugarcoatlabs.persistence.exception.DuplicateEventException
-           * com.sugarcoatlabs.persistence.exception.DuplicateEntityException
-           * com.sugarcoatlabs.persistence.exception.EntityNotFoundException
-
-       - TCK Abstract Test Suites (imported via `test-jar`):
-           * com.sugarcoatlabs.persistence.tck.EventStreamEngineContractTest
-           * com.sugarcoatlabs.persistence.tck.StateStoreEngineContractTest
-           * com.sugarcoatlabs.persistence.tck.RepositoryStateStoreContractTest
-           * com.sugarcoatlabs.persistence.tck.EntityStateStoreContractTest
-
-    2. TO BE IMPLEMENTED IN THIS MODULE (`persistence-engines-dynamodb`):
-
-       - Production (`src/main/java`):
-           * module-info.java
-               JPMS module descriptor requiring `com.sugarcoatlabs.persistence`
-               and AWS SDK DynamoDB v2, exporting only the public API package
-               while keeping `.impl` unexported.
-           * com/sugarcoatlabs/persistence/dynamodb/DynamoDb.java
-               Public fluent `PersistencePipeline` entry point for
-               `PersistenceEngines.using(DynamoDb.client(client))...`.
-           * com/sugarcoatlabs/persistence/dynamodb/DynamoDbCodec.java
-               Zero-framework functional serialization contract (`T <-> String`)
-               with built-in primitive codecs (`strings()`, `uuids()`, `longs()`).
-           * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbEventStream.java
-               Encapsulated `EventStreamEngine` backed by `TransactWriteItems`
-               and `ConsistentRead=true` queries.
-           * com/sugarcoatlabs/persistence/dynamodb/impl/DynamoDbStateStore.java
-               Encapsulated `StateStoreEngine` backed by conditional and
-               unconditional `PutItem` (`attribute_not_exists(PK)` for
-               `putIfAbsent`, `attribute_exists(PK)` for `replace`), `GetItem`,
-               `Scan`, and `DeleteItem`.
-
-       - Integration Tests (`src/test/java`):
-           * DynamoDbEventStreamIT.java
-               Extends `EventStreamEngineContractTest` against `amazon/dynamodb-local`
-               via Testcontainers.
-           * DynamoDbStateStoreIT.java
-               Extends `StateStoreEngineContractTest` against `amazon/dynamodb-local`
-               via Testcontainers.
-           * DynamoDbRepositoryStateStoreIT.java
-               Extends `RepositoryStateStoreContractTest` against `amazon/dynamodb-local`
-               via Testcontainers.
-           * DynamoDbEntityStateStoreIT.java
-               Extends `EntityStateStoreContractTest` against `amazon/dynamodb-local`
-               via Testcontainers.
-    ============================================================================
-    -->
-
     <groupId>com.sugarcoatlabs</groupId>
     <artifactId>persistence-engines-dynamodb</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <name>persistence-engines-dynamodb</name>
@@ -82,12 +15,34 @@
     <properties>
         <maven.compiler.release>24</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <core.version>1.0.0-SNAPSHOT</core.version>
+        <core.version>1.0.0</core.version>
         <aws.sdk.version>2.31.12</aws.sdk.version>
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <testcontainers.version>1.21.4</testcontainers.version>
+        <github.packages.url>https://maven.pkg.github.com/sugarcoat-labs/persistence-engines-dynamodb</github.packages.url>
     </properties>
+
+    <repositories>
+        <repository>
+            <id>github-sugarcoat-labs</id>
+            <name>GitHub Packages - persistence-engines-core</name>
+            <url>https://maven.pkg.github.com/sugarcoat-labs/persistence-engines-core</url>
+        </repository>
+    </repositories>
+
+    <distributionManagement>
+        <repository>
+            <id>github-sugarcoat-labs</id>
+            <name>GitHub Packages - sugarcoat-labs</name>
+            <url>${github.packages.url}</url>
+        </repository>
+        <snapshotRepository>
+            <id>github-sugarcoat-labs</id>
+            <name>GitHub Packages Snapshots - sugarcoat-labs</name>
+            <url>${github.packages.url}</url>
+        </snapshotRepository>
+    </distributionManagement>
 
     <dependencies>
         <!-- Core Contracts & API -->
@@ -109,6 +64,7 @@
             <groupId>com.sugarcoatlabs</groupId>
             <artifactId>persistence-engines-core</artifactId>
             <version>${core.version}</version>
+            <classifier>tests</classifier>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>

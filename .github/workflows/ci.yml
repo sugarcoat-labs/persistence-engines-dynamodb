@@ -9,16 +9,21 @@
 # 3. Downloads two repositories side-by-side into the workspace:
 #      - `core/`     -> sugarcoat-labs/persistence-engines-core (contracts & TCK)
 #      - `dynamodb/` -> this repository (Amazon DynamoDB realization)
-# 4. Installs Java 24 (Eclipse Temurin) and caches Maven dependencies across runs.
-# 5. Builds, tests, and installs `persistence-engines-core` into the runner's
+# 4. Installs Java 24 (Eclipse Temurin) and caches Maven dependencies across runs
+#    using both `core/pom.xml` and `dynamodb/pom.xml`.
+# 5. Writes `~/.m2/settings.xml` with `github-sugarcoat-labs` credentials
+#    using `GITHUB_ACTOR` and `GITHUB_TOKEN`.
+# 6. Builds, tests, and installs `persistence-engines-core` into the runner's
 #    local Maven cache (`~/.m2`) so both the core JPMS module and the portable
 #    TCK `test-jar` are compiled, packaged, and available to the DynamoDB build.
-# 6. Compiles `persistence-engines-dynamodb`, starts an ephemeral
+# 7. Compiles `persistence-engines-dynamodb`, starts an ephemeral
 #    `amazon/dynamodb-local` container via Testcontainers, executes all
 #    inherited TCK integration tests (`*IT.java`) against real DynamoDB wire
 #    semantics, and generates full Javadocs (`mvn -B verify javadoc:javadoc`).
+# 8. On pushes to `main` only (not pull requests), publishes the compiled
+#    `persistence-engines-dynamodb` artifacts to GitHub Packages
+#    (`mvn -B -DskipTests deploy`).
 # ==============================================================================
-
 name: Java 24 CI
 
 on:
@@ -29,6 +34,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   build-and-test:
@@ -56,10 +62,40 @@ jobs:
             core/pom.xml
             dynamodb/pom.xml
 
+      - name: Configure Maven credentials for GitHub Packages
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>github-sugarcoat-labs</id>
+                <username>${env.GITHUB_ACTOR}</username>
+                <password>${env.GITHUB_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
       - name: Install persistence-engines-core (including TCK test-jar)
         working-directory: core
         run: mvn -B install
 
       - name: Build, run DynamoDB TCK integration tests, and generate Javadoc
         working-directory: dynamodb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: mvn -B verify javadoc:javadoc
+
+      - name: Publish to GitHub Packages (main branch only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: dynamodb
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn -B -DskipTests deploy
